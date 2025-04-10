@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const csv = require('csv-parser');
 const dns = require('dns').promises;
-const SMTPConnection = require('smtp-connection');
+const nodemailer = require('nodemailer');
 const fs = require('fs');
 const cors = require('cors');
 
@@ -14,7 +14,7 @@ app.use(cors());
 app.use('/test', express.static('public'));
 
 function isValidEmailSyntax(email) {
-  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const regex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   return regex.test(email);
 }
 
@@ -29,32 +29,25 @@ async function checkDomain(domain) {
 
 async function verifySMTP(email, domain) {
   try {
-    const mx = await dns.resolveMx(domain);
-    const host = mx.sort((a, b) => a.priority - b.priority)[0].exchange;
-
-    return new Promise((resolve) => {
-      const conn = new SMTPConnection({
-        port: 25,
-        host,
-        tls: { rejectUnauthorized: false },
-        socketTimeout: 5000,
-      });
-
-      conn.on('error', () => resolve('invalid_smtp'));
-
-      conn.connect(() => {
-        conn.login({}, () => {
-          conn.send({ from: 'noreply@test.com', to: [email] }, '', (err) => {
-            if (err && err.code === 'EMESSAGE') resolve('rejected_email');
-            else if (err) resolve('invalid_smtp');
-            else resolve('valid');
-            conn.quit();
-          });
-        });
-      });
+    const transporter = nodemailer.createTransport({
+      host: domain,
+      port: 25,
+      secure: false,
+      tls: {
+        rejectUnauthorized: false
+      }
     });
-  } catch {
-    return 'invalid_smtp';
+
+    await transporter.verify();
+    return 'valid';
+  } catch (error) {
+    if (error.code === 'ECONNECTION') {
+      return 'invalid_smtp';
+    } else if (error.code === 'EENVELOPE') {
+      return 'rejected_email';
+    } else {
+      return 'invalid_smtp';
+    }
   }
 }
 
