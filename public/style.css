@@ -1,0 +1,26 @@
+body {
+  font-family: sans-serif;
+  background: #f4f4f4;
+  padding: 30px;
+}
+.container {
+  background: #fff;
+  padding: 20px;
+  max-width: 600px;
+  margin: auto;
+  border-radius: 10px;
+  box-shadow: 0 0 10px #ccc;
+}
+h2 {
+  text-align: center;
+}
+#results {
+  margin-top: 20px;
+}
+.result-item {
+  padding: 5px;
+  border-bottom: 1px solid #ddd;
+}
+.result-item span {
+  font-weight: bold;
+}
