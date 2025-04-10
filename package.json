@@ -1,5 +1,5 @@
 {
-  "name": "email-checker",
+  "name": "email-validator",
   "version": "1.0.0",
   "description": "Simple email validator web app",
   "license": "MIT",
