@@ -14,8 +14,8 @@ app.use(cors());
 app.use('/test', express.static('public'));
 
 function isValidEmailSyntax(email) {
-  const regex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
-  return regex.test(email);
+  const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return regex.test(email.trim().toLowerCase().replace(/\uFEFF/g, ''));
 }
 
 async function checkDomain(domain) {
@@ -71,7 +71,7 @@ app.post('/test/validate', upload.single('file'), async (req, res) => {
         }
         seen.add(email);
 
-        if (!isValidEmailSyntax(email)) {
+        if (!(email)) {
           results.push({ email, status: ['invalid_email'] });
           continue;
         }
