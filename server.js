@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const csv = require('csv-parser');
 const dns = require('dns').promises;
-const nodemailer = require('nodemailer');
+const SMTPConnection = require('smtp-connection');
 const fs = require('fs');
 const cors = require('cors');
 
@@ -10,14 +10,22 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// ✅ Enable CORS for your frontend
+app.use(cors({
+  origin: 'https://staff.mfabowl.com'
+}));
+
+// ✅ Serve static files if needed (optional)
 app.use('/test', express.static('public'));
 
+// ✅ Email syntax check (improved + cleans BOM chars)
 function isValidEmailSyntax(email) {
+  const clean = email.trim().toLowerCase().replace(/\uFEFF/g, '');
   const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return regex.test(email.trim().toLowerCase().replace(/\uFEFF/g, ''));
+  return regex.test(clean);
 }
 
+// ✅ Check for MX records
 async function checkDomain(domain) {
   try {
     const mx = await dns.resolveMx(domain);
@@ -27,31 +35,42 @@ async function checkDomain(domain) {
   }
 }
 
+// ✅ SMTP handshake (RCPT TO only, no email sent)
 async function verifySMTP(email, domain) {
   try {
-    const transporter = nodemailer.createTransport({
-      host: domain,
-      port: 25,
-      secure: false,
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
+    const mx = await dns.resolveMx(domain);
+    const host = mx.sort((a, b) => a.priority - b.priority)[0].exchange;
 
-    await transporter.verify();
-    return 'valid';
-  } catch (error) {
-    if (error.code === 'ECONNECTION') {
-      return 'invalid_smtp';
-    } else if (error.code === 'EENVELOPE') {
-      return 'rejected_email';
-    } else {
-      return 'invalid_smtp';
-    }
+    return new Promise((resolve) => {
+      const conn = new SMTPConnection({
+        port: 25,
+        host,
+        tls: { rejectUnauthorized: false },
+        socketTimeout: 5000,
+      });
+
+      conn.on('error', () => resolve('invalid_smtp'));
+
+      conn.connect(() => {
+        conn.login({}, () => {
+          conn.send({ from: 'noreply@test.com', to: [email] }, '', (err) => {
+            if (err && err.code === 'EMESSAGE') resolve('rejected_email');
+            else if (err) resolve('invalid_smtp');
+            else resolve('valid');
+            conn.quit();
+          });
+        });
+      });
+    });
+  } catch {
+    return 'invalid_smtp';
   }
 }
 
+// ✅ Main validation endpoint
 app.post('/test/validate', upload.single('file'), async (req, res) => {
+  console.log("📥 File received from frontend");
+
   const seen = new Set();
   const results = [];
   const emails = [];
@@ -59,7 +78,7 @@ app.post('/test/validate', upload.single('file'), async (req, res) => {
   fs.createReadStream(req.file.path)
     .pipe(csv())
     .on('data', (row) => {
-      const email = Object.values(row)[0]?.trim();
+      const email = Object.values(row)[0]?.trim().toLowerCase().replace(/\uFEFF/g, '');
       if (email) emails.push(email);
     })
     .on('end', async () => {
@@ -71,7 +90,7 @@ app.post('/test/validate', upload.single('file'), async (req, res) => {
         }
         seen.add(email);
 
-        if (!(email)) {
+        if (!isValidEmailSyntax(email)) {
           results.push({ email, status: ['invalid_email'] });
           continue;
         }
@@ -95,5 +114,5 @@ app.post('/test/validate', upload.single('file'), async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
